@@ -9,6 +9,9 @@ user:
     - cold_start.yaml
     - post.yaml
     - graphics.yaml
+    - scrubbing.yaml
+    - archiving.yaml
+  hpss_archive_dir: /5year/BMC/fv3lam/role.rtgsd-fv3-dev/testdir
 
 workflow:
   tasks:
@@ -16,6 +19,8 @@ workflow:
     task_ungrib_lbcs: !remove
     task_mpas_lbcs: !remove
     task_mpas:
+      cores: !remove
+      nodes: "{{ forecast.mpas.execution.batchargs.nodes }}:ppn={{ forecast.mpas.execution.batchargs.tasks_per_node }}"
       dependency:
         taskdep:
           attrs:
@@ -64,7 +69,7 @@ forecast:
       CCN_ACTIVATE.BIN: !remove
       QNWFA_QNIFA_SIGMA_MONTHLY.dat: "{{ platform.hrrr_fix }}/../QNWFA_QNIFA_SIGMA_MONTHLY.dat"
       "{{ user.mesh_label }}.ugwp_oro_data.nc": "{{ platform.hrrr_fix }}/{{ user.mesh_label }}.ugwp_oro_data.nc" 
-      "NoahmpTable.TBL": "{{ user.mpas_app }}/src/MPAS-Model/NoahmpTable.TBL"
+      # switching to noah - "NoahmpTable.TBL": "{{ user.mpas_app }}/src/MPAS-Model/NoahmpTable.TBL"
     namelist:
       update_values:
         nhyd_model:
@@ -78,8 +83,8 @@ forecast:
           config_rayleigh_damp_u: true
           config_rayleigh_damp_u_timescale_days: 2.5
         io:
-          config_pio_num_iotasks: 64
-          config_pio_stride: 125
+          config_pio_num_iotasks: 50
+          config_pio_stride: 192
         limited_area:
           config_apply_lbcs: false
         physics:
@@ -87,7 +92,7 @@ forecast:
           config_radtlw_interval: 00:15:00
           config_radtsw_interval: 00:15:00
           config_gvf_update: true
-          config_convection_scheme: cu_grell_freitas
+          config_convection_scheme: cu_grell_freitas_li
           config_tempo_ml_nc_pbl: true
           config_lsm_scheme: sf_noahmp
           num_soil_layers: 4
@@ -113,6 +118,14 @@ forecast:
         output_interval: 06:00:00
         files:
           - stream_list.atmosphere.diag_ugwp
+      restart:
+        mutable: false
+        type: "input;output"
+        filename_template: "restart.$Y-$M-$D_$h.$m.$s.nc"
+        io_type: "pnetcdf,cdf5"
+        input_interval: initial_only
+        output_interval: "06:00:00"
+        clobber_mode: overwrite
       surface: !remove
       lbc_in: !remove
 

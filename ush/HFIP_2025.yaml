@@ -1,0 +1,5 @@
+user:
+  experiment_dir: /scratch3/BMC/gsd-fv3/role.rtgsd-fv3-dev/MPAS_HFIP_2025/exp
+  platform: ursa
+  first_cycle: !!timestamp 2025-07-29T00:00:00
+  last_cycle: !!timestamp 2026-02-01T00:00:00

@@ -1,3 +1,6 @@
+user:
+  cycle_frequency: 24
+
 platform:
   account: rtgsd-fv3-dev
 get_ics_data:
@@ -19,45 +22,68 @@ workflow:
     cyclethrottle: 3
   entities:
     LOGDIR: "{{user.experiment_dir}}/log/@Y@m@d@H"
-  log:
-    cyclestr:
-      value: "{{ user.experiment_dir }}/log/workflow_@Y@m@d.log"
   tasks:
-    get_ics_data:
+    task_get_ics_data:
+      attrs:
+        maxtries: 3
       account: gsd-fv3-dev
       dependency:
-        cyclestr:
-          attrs:
-            offset: 04:45:00
-          value: "@Y@m@d@H@M@S"
+        timedep:
+          cyclestr:
+            attrs:
+              offset: 04:45:00
+            value: "@Y@m@d@H@M@S"
     task_ungrib_ics:
+      attrs:
+        maxtries: 3
       native:
         cyclestr:
-          value: --reservation=gsd_prep
+          value: --reservation=gsd_prep_@H
     task_mpas_ics:
+      attrs:
+        maxtries: 3
       native:
         cyclestr:
-          value: --reservation=gsd_init
+          value: --reservation=gsd_ini_@H
     task_mpas:
       native:
         cyclestr:
-          value: --reservation=gsd_fcst
+          value: --reservation=gsd_fcst_@H
     metatask_post:
       task_mpassit_#fhr#:
-        native:
-          cyclestr:
-            value: --reservation=gsd_post1
+        attrs:
+          maxtries: 3
+        # native:
+        #   cyclestr:
+        #     value: --reservation=gsd_post1_@H
+        account: gsd-fv3-dev
       task_upp_#fhr#:
-        native:
-          cyclestr:
-            value: --reservation=gsd_post1
+        attrs:
+          maxtries: 3
+        # native:
+        #   cyclestr:
+        #     value: --reservation=gsd_post1_@H
+        account: gsd-fv3-dev
       task_combine_grib_#fhr#:
-        native:
-          cyclestr:
-            value: --reservation=gsd_post1
+        attrs:
+          maxtries: 3
+        # native:
+        #   cyclestr:
+        #     value: --reservation=gsd_post1_@H
+        account: gsd-fv3-dev
+    task_tracker:
+        attrs:
+          maxtries: 3
+        # native:
+        #   cyclestr:
+        #     value: --reservation=gsd_post1_@H
+        account: gsd-fv3-dev
     task_graphics:
-      native:
-        cyclestr:
-          value: --reservation=gsd_post2
+      # native:
+      #   cyclestr:
+      #     value: --reservation=gsd_post2_@H
+      attrs:
+        maxtries: 3
+      account: gsd-fv3-dev
 
 

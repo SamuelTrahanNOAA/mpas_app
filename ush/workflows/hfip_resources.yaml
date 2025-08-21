@@ -10,8 +10,10 @@ forecast:
   mpas:
     execution:
       batchargs:
-        cores: 9600
-        walltime: "05:15:00"
+        nodes: 54
+        tasks_per_node: 192
+        cores: 10368
+        walltime: "5:10:00"
 
 post:
   mpassit:

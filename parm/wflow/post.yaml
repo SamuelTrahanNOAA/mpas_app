@@ -81,3 +81,34 @@ workflow:
           taskdep:
             attrs:
               task: upp_#fhr#
+    task_tracker:
+      command:
+        cyclestr:
+          value: 'source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &&
+            cd {{ user.experiment_dir }}/@Y@m@d@H &&
+            &MPAS_APP;/scripts/run_tracker.sh @Y@m@d@H'
+      account: "{{ platform.account }}"
+      join:
+        cyclestr:
+          value: '&LOGDIR;/{{ jobname }}_@Y@m@d@H.log'
+      walltime: "{{ post.tracker.execution.batchargs.walltime }}"
+      nodes: "{{ post.tracker.execution.batchargs.nodes }}:ppn={{ post.tracker.execution.batchargs.tasks_per_node }}"
+      exclusive: "True"
+      partition: "{{ post.upp.execution.batchargs.partition }}"
+      envars:
+        TRACKER_DIR:
+          cyclestr:
+            value: '{{ post.tracker.execution.tracker_dir }}'
+        MPISERIAL:
+          cyclestr:
+            value: '{{ post.tracker.execution.mpiserial }}'
+        SYNDAT_PREFIX:
+          cyclestr:
+            value: '{{ post.tracker.execution.syndat_prefix }}'
+        MPICMD:
+          cyclestr:
+            value: '{{ post.tracker.execution.mpicmd }}'
+      dependency:
+        metataskdep:
+          attrs:
+            metatask: post
