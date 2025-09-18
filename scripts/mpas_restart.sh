@@ -11,12 +11,13 @@ mpas_restart() {
     local forecast_length="$4" # integer number of hours
     local mpi_command="$5" # srun, mpiexec, or similar
     local forecast_module="$6" # module to load from mpas_app/modulefiles before running; eg. build_ursa_intel_ifort
+    local max_run_duration="$7"
 
     local forecast_exe=$mpas_app/exec/atmosphere_model
 
     cd "$forecast_dir"
 
-    move_old_file log.atmosphere.00000.out # Must rename ASAP since it is a Rocoto hang dependency
+    move_old_files log.atmosphere.*.out # Must rename ASAP since it is a Rocoto hang dependency
 
     set +x
     load_modules "$mpas_app" "$forecast_module"
@@ -29,24 +30,26 @@ mpas_restart() {
     local incomplete_run=NO
     local restart_lead_time=0
     local run_duration=$forecast_length
+    local do_restart=ERROR_IF_UNSET
+    local restart_time="$start_time"
 
     if [[ -n "$restart" && -s "$restart" ]] ; then
-        local restart_time=$( timestamp_from_filename "$restart" )
+        restart_time=$( timestamp_from_filename "$restart" )
         restart_lead_time=$( calculate_lead_time "$start_time" "$restart_time" )
         run_duration=$(( forecast_length - restart_lead_time ))
-
-        # EDIT: UPDATE THIS SO IT ISN'T HARD-CODED TO 6 HOURS
-        if (( run_duration > 6 )) ; then
-            echo "Setting run duration to 6 hours for testing."
-            incomplete_run=YES
-            run_duration=6
-        fi
-
-        update_namelist namelist.atmosphere "$restart_time" "$run_duration"
+        do_restart=.true.
     else
-        echo "No restart found. Running forecast without updating namelist."
-        local run_duration=$forecast_length
+        echo "No restart found. Will cold start."
+        do_restart=.false.
     fi
+
+    if (( run_duration > max_run_duration )) ; then
+        echo "Reducing run duration from $run_duration to $max_run_duration hours for testing."
+        incomplete_run=YES
+        run_duration=$max_run_duration
+    fi
+
+    update_namelist namelist.atmosphere "$restart_time" "$run_duration" "$do_restart"
 
     if (( run_duration > 0 )) ; then
        ldd "$forecast_exe"
@@ -91,34 +94,46 @@ load_modules() {
 }
 
 clean_directory() {
-    rm -f log.atmosphere*err
     rm -f core*
-    copy_old_files
+    tar_old_err_files
+    copy_old_files namelist.atmosphere runscript.mpas_restart.out
+}
+
+tar_old_err_files() {
+    if [[ $( find . -name 'log.atmosphere*err' | wc -c ) > 0 ]] ; then
+        local old="log.atmosphere.err.$( date +"%Y-%m-%d_%H-%M-%S" ).tar"
+        tar -cpf "$old" log.atmosphere*err
+        test -s "$old" || rm -f "$old"
+        rm -f log.atmosphere*err
+    fi
 }
 
 copy_old_files() {
-    copy_old_file namelist.atmosphere
-    copy_old_file runscript.mpas_restart.out
+    local log
+    local old
+
+    for log in "$@" ; do
+        old="$log.$( date +"%Y-%m-%d_%H-%M-%S" ).old"
+
+        if [[ -f "$log" ]] ; then
+            cp -fp "$log" "$old"
+            chmod a-w "$old"
+        fi
+    done
 }
 
-copy_old_file() {
-    local log="$1"
-    local old="$log.old.$( date +"%Y-%m-%d_%H-%M-%S" ).$$"
+move_old_files() {
+    local log
+    local old
 
-    if [[ -f "$log" ]] ; then
-        cp -fp "$log" "$old"
-        chmod a-w "$old"
-    fi
-}
+    for log in "$@" ; do
+        old="$log.$( date +"%Y-%m-%d_%H-%M-%S" ).old"
 
-move_old_file() {
-    local log="$1"
-    local old="$log.old.$( date +"%Y-%m-%d_%H-%M-%S" ).$$"
-
-    if [[ -f "$log" ]] ; then
-        mv -f "$log" "$old"
-        chmod a-w "$old"
-    fi
+        if [[ -f "$log" ]] ; then
+            mv -f "$log" "$old"
+            chmod a-w "$old"
+        fi
+    done
 }
 
 timestamp_from_filename() {
@@ -140,18 +155,29 @@ mpas_to_posix_time() {
 }
 
 find_restart() {
-    # Find the first restart file and print it to stdout.
+    # Find the first restart file that appears to be complete and print it to stdout.
     # Return 0 on success, 1 on failure.
 
-    # FIXME: Find the first restart file that was written successfully.
-    local restart=$( ls -1t restart.*.nc |head -1 || echo NONE )
+    for restart in $( ls -1t restart.*.nc || echo NONE ) ; do
+        if [[ "$restart" == NONE ]] ; then
+            break
+        fi
+        local history=$( echo "$restart" | sed s,restart,history,g )
+        local diag=$( echo "$restart" | sed s,restart,diag,g )
+        if [[ ! -s "$history" ]] ; then
+            echo "$restart": no "$history" 1>&2
+        elif [[ ! -s "$diag" ]] ; then
+            echo "$restart": no "$diag" 1>&2
+        elif [[ ! -s "$restart" ]] ; then
+            echo "$restart": no "$restart" 1>&2
+        else
+            echo "$restart": appears valid 1>&2
+            echo "$restart"
+            return 0
+        fi
+    done
 
-    if [[ -s "$restart" ]] ; then
-        echo "$restart"
-        return 0
-    else
-        return 1
-    fi
+    return 1
 }
 
 calculate_lead_time() {
@@ -173,13 +199,15 @@ update_namelist() {
     local namelist="$1"
     local restart_time="$2"
     local run_duration="$3"
+    local do_restart="$4"
 
     cat "$namelist" | \
         /usr/bin/env RESTART_TIME="$restart_time" \
                      RUN_DURATION="$run_duration" \
+                     DO_RESTART="$do_restart" \
             perl -ne '
               s/config_start_time.*/config_start_time = "$ENV{RESTART_TIME}"/g ;
-              s/config_do_restart.*/config_do_restart = .true./g ;
+              s/config_do_restart.*/config_do_restart = $ENV{DO_RESTART}/g ;
               s/config_run_duration.*/config_run_duration = "$ENV{RUN_DURATION}:00:00"/g ;
               print
             ' \

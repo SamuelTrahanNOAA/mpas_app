@@ -15,8 +15,8 @@ ymdh="$1"
 mpas_upp=../upp
 syndat_prefix="$SYNDAT_PREFIX"
 fhour_start=0
-fhour_step=6
-fhour_last=120
+fhour_step="$FHOUR_STEP"
+fhour_last="$FORECAST_LENGTH"
 grid="-new_grid latlon -100:3333:0.03 -10:2666:0.03"
 tracker="$TRACKER_DIR/exec/gettrk.x"
 mpiserial="$MPISERIAL"
@@ -37,7 +37,12 @@ DD=${ymdh:6:2}
 HH=${ymdh:8:2}
 
 syndat=${syndat_prefix}.$CC$YY
-grep -E "^.....[0-49][0-9]L ......... $CC$YY$MM$DD $HH"  $syndat > allvit
+if ( ! grep -E "^.....[0-49][0-9]L ......... $CC$YY$MM$DD $HH"  $syndat > allvit ) ; then
+    echo "No Atlantic storms. There is nothing to track."
+    echo "Delivering an empty track."
+    cat /dev/null >  mpas.trak.atcfunix
+    exit 0
+fi
 ln -sf allvit tcvit_rsmc_storms.txt
 
 opts='-set_grib_type c2 -new_grid_winds grid -new_grid_vectors "UGRD:VGRD" -new_grid_interpolation neighbor'
@@ -57,6 +62,11 @@ for fhr in $( seq $fhour_start $fhour_step $fhour_last ) ; do
     
     grib2d=$( printf "%s/%03d/%s%02d" "$mpas_upp" $fhr "2DFLD.GrbF" $fhr )
     gribprs=$( printf "%s/%03d/%s%02d" "$mpas_upp" $fhr "PRSLEV.GrbF" $fhr )
+
+    if [[ ! -s "$grib2d" || ! -s "$gribprs" ]] ; then
+        echo "No file at time $fhr" 1>&2
+        break
+    fi
 
     latlon2d=$( printf latlon_2d_%03d.grb2 $fhr )
     latlonprs=$( printf latlon_prs_%03d.grb2 $fhr )

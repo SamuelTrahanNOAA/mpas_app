@@ -108,6 +108,12 @@ workflow:
         MPICMD:
           cyclestr:
             value: '{{ post.tracker.execution.mpicmd }}'
+        FHOUR_STEP
+          cyclestr:
+            value: '{{ post.tracker.execution.fhour_step }}'
+        FORECAST_LENGTH
+          cyclestr:
+            value: '{{ forecast.mpas['length'] }}'
       dependency:
         metataskdep:
           attrs:

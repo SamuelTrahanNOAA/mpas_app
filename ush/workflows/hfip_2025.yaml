@@ -83,8 +83,8 @@ forecast:
           config_rayleigh_damp_u: true
           config_rayleigh_damp_u_timescale_days: 2.5
         io:
-          config_pio_num_iotasks: 50
-          config_pio_stride: 192
+          config_pio_num_iotasks: 64
+          config_pio_stride: 150
         limited_area:
           config_apply_lbcs: false
         physics:
@@ -92,14 +92,17 @@ forecast:
           config_radtlw_interval: 00:15:00
           config_radtsw_interval: 00:15:00
           config_gvf_update: true
-          config_convection_scheme: cu_grell_freitas_li
+          config_convection_scheme: cu_grell_freitas
           config_tempo_ml_nc_pbl: true
-          config_lsm_scheme: sf_noahmp
+          config_lsm_scheme: sf_noah
           num_soil_layers: 4
-          config_gfl_sub3d: 1
+          config_gf_sub3d: 1
         physics_lsm_noahmp:
           config_noahmp_iopt_crs: 2
           config_noahmp_iopt_stc: 3
+        printout:
+          config_print_global_minmax_vel: false
+          config_print_detailed_minmax_vel: false
     streams:
       ugwp_oro_data_in:
         filename_template: "{{ user.mesh_label }}.ugwp_oro_data.nc"

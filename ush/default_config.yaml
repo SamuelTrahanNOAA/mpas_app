@@ -452,6 +452,7 @@ post:
         walltime: 00:12:00
         nodes: 1
         tasks_per_node: 32
+        fhour_step: 6
         native:
           - --exclusive
       tracker_dir: /scratch3/BMC/wrfruc/Samuel.Trahan/mpashfip/tracker-hafs-211
