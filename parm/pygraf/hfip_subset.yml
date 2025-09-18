@@ -131,6 +131,8 @@ hourly:
       - 700mb
       - 850mb
       - 925mb
+    totp6h:
+      - sfc
     ulwrf:
       - sfc
       - top
