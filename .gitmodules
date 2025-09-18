@@ -6,7 +6,7 @@
 	url = https://github.com/NOAA-GSL/MPASSIT.git
 [submodule "src/UPP"]
 	path = src/UPP
-	url = https://github.com/NOAA-EMC/UPP.git
+	url = https://github.com/SamuelTrahanNOAA/UPP.git
 [submodule "ush/pygraf"]
 	path = ush/pygraf
-	url = https://github.com/NOAA-GSL/pygraf.git
+	url = https://github.com/SamuelTrahanNOAA/pygraf.git
