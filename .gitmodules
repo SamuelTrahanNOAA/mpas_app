@@ -3,10 +3,13 @@
 	url = https://github.com/ufs-community/MPAS-Model.git
 [submodule "src/MPASSIT"]
 	path = src/MPASSIT
-	url = https://github.com/NOAA-GSL/MPASSIT.git
+	url = https://github.com/SamuelTrahanNOAA/MPASSIT.git
+        branch = working-mpas822hfip
 [submodule "src/UPP"]
 	path = src/UPP
 	url = https://github.com/SamuelTrahanNOAA/UPP.git
+        branch = working-mpas822hfip
 [submodule "ush/pygraf"]
 	path = ush/pygraf
 	url = https://github.com/SamuelTrahanNOAA/pygraf.git
+        branch = working-mpas822hfip
