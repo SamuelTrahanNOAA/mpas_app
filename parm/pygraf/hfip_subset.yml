@@ -165,3 +165,5 @@ hourly:
       - max
       - mdn
       - mup
+    totp6h:
+      - sfc
