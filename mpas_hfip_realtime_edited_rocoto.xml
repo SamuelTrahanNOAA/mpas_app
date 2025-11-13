@@ -1,0 +1,713 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE workflow [
+  <!ENTITY EXPERIMENT_DIR "/scratch3/BMC/gsd-fv3/role.rtgsd-fv3-dev/MPAS_HFIP_2025/exp">
+  <!ENTITY EXPERIMENT_CONFIG "&EXPERIMENT_DIR;/experiment.yaml">
+  <!ENTITY LOGDIR "&EXPERIMENT_DIR;/log/@Y@m@d@H">
+  <!ENTITY MPAS_APP "/scratch3/BMC/gsd-fv3-dev/role.rtgsd-fv3-dev/MPAS_HFIP_2025/mpas_app">
+  <!ENTITY PLATFORM "ursa">
+]>
+
+<!-- This is the rocoto.xml file used for the real-time MPAS HFIP simultations.
+     It is heavilly edited because we needed some Rocoto functionality that did not exist in uwtools.
+     However, it does originate from the uwtools-generated file. Hence the stark similarities. -->
+
+<workflow realtime="True" scheduler="slurm" cyclethrottle="999">
+  <cycledef group="forecast">202508240000 202612010000 24:00:00</cycledef>
+  <log>&EXPERIMENT_DIR;/workflow.log</log>
+  <task name="dummy_job_to_force_rocoto_to_start_the_cycle">
+    <!-- This job is a workaround for a strange bug. Rocoto refused to start the cycle no matter what.
+         A cron job boots this job at the right time of day. -->
+    <account>gsd-fv3-dev</account>
+    <cores>1</cores>
+    <partition>u1-compute</partition>
+    <walltime>00:01:00</walltime>
+    <command>true</command>
+    <jobname>dummy_job_to_force_rocoto_to_start_the_cycle</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/dummy_job_to_force_rocoto_to_start_the_cycle_@Y@m@d@H.log</cyclestr>
+    </join>
+    <dependency>
+      <timedep>
+        <cyclestr offset="00:01:00">@Y@m@d@H@M@S</cyclestr>
+      </timedep>
+    </dependency>
+  </task>
+  <task name="get_ics_data" maxtries="3">
+    <account>gsd-fv3-dev</account>
+    <cores>1</cores>
+    <partition>u1-service</partition>
+    <walltime>00:05:00</walltime>
+    <command>&MPAS_APP;/scripts/get_external_data.sh</command>
+    <jobname>get_ics_data</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/get_ics_data_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>cycle</name>
+      <value>
+        <cyclestr>@Y-@m-@dT@H:@M:@S</cyclestr>
+      </value>
+    </envar>
+    <envar>
+      <name>OUTPUT_PATH</name>
+      <value>
+        <cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/GFS</cyclestr>
+      </value>
+    </envar>
+    <envar>
+      <name>EXTERNAL_MODEL</name>
+      <value>GFS</value>
+    </envar>
+    <envar>
+      <name>ICS_or_LBCS</name>
+      <value>ICS</value>
+    </envar>
+    <envar>
+      <name>TIME_OFFSET_HRS</name>
+      <value>0</value>
+    </envar>
+    <envar>
+      <name>MPAS_APP</name>
+      <value>&MPAS_APP;</value>
+    </envar>
+    <dependency>
+      <timedep>
+        <cyclestr offset="04:45:00">@Y@m@d@H@M@S</cyclestr>
+      </timedep>
+    </dependency>
+  </task>
+  <task name="ungrib_ics" maxtries="3">
+    <account>rtgsd-fv3-dev</account>
+    <exclusive>true</exclusive>
+    <nodes>1:ppn=1</nodes>
+    <walltime>00:05:00</walltime>
+    <command>
+      <cyclestr>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; &MPAS_APP;/scripts/ungrib.py -c &EXPERIMENT_CONFIG; --cycle @Y-@m-@dT@H:@M:@S --key-path prepare_grib_ics</cyclestr>
+    </command>
+    <jobname>ungrib_ics</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/ungrib_ics_@Y@m@d@H.log</cyclestr>
+    </join>
+    <native>
+      <cyclestr>--reservation=gsd_prep_@H</cyclestr>
+    </native>
+    <dependency>
+      <taskdep task="get_ics_data"/>
+    </dependency>
+  </task>
+  <task name="mpas_ics" maxtries="3">
+    <account>rtgsd-fv3-dev</account>
+    <cores>1200</cores>
+    <walltime>00:10:00</walltime>
+    <command>
+      <cyclestr>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; &MPAS_APP;/scripts/mpas_init.py -c &EXPERIMENT_CONFIG; --cycle @Y-@m-@dT@H:@M:@S --key-path create_ics</cyclestr>
+    </command>
+    <jobname>mpas_ics</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/mpas_ics_@Y@m@d@H.log</cyclestr>
+    </join>
+    <native>
+      <cyclestr>--reservation=gsd_ini_@H</cyclestr>
+    </native>
+    <dependency>
+      <taskdep task="ungrib_ics"/>
+    </dependency>
+  </task>
+  <task name="mpas" maxtries="1">
+    <account>rtgsd-fv3-dev</account>
+    <nodes>64:ppn=150</nodes>
+    <partition>u1-compute</partition>
+    <walltime>5:00:00</walltime>
+    <command>
+      <cyclestr>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; &MPAS_APP;/scripts/mpas.py -c &EXPERIMENT_CONFIG; --cycle @Y-@m-@dT@H:@M:@S --key-path forecast &amp;&amp; echo "Forecast complete at $( date )" >> &EXPERIMENT_DIR;/@Y@m@d@H/forecast/completion_timestamp</cyclestr>
+    </command>
+    <jobname>mpas</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/mpas_@Y@m@d@H.log</cyclestr>
+    </join>
+    <native>
+      <cyclestr>--reservation=gsd_fcst_@H</cyclestr>
+    </native>
+    <dependency>
+      <taskdep task="mpas_ics"/>
+    </dependency>
+    <hangdependency>
+      <!-- This dependency kills the job if the log.atmosphere file for rank 0 is unmodified for 480 seconds.
+           That job often hung randomly. A hang dependency lets us submit the restart job in that case. -->
+      <or>
+        <datadep age="480"><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/log.atmosphere.00000.out</cyclestr></datadep>
+        <datadep age="480"><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/log.atmosphere.0000.out</cyclestr></datadep>
+        <datadep age="480"><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/log.atmosphere.000.out</cyclestr></datadep>
+        <datadep age="480"><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/log.atmosphere.00.out</cyclestr></datadep>
+      </or>
+    </hangdependency>
+    <rewind>
+      <sh><cyclestr>rm -f &EXPERIMENT_DIR;/@Y@m@d@H/forecast/completion_timestamp</cyclestr></sh>
+    </rewind>
+  </task>
+  <task name="mpas_restart">
+    <!-- When the "mpas" job hangs, the mpas_restart is submitted. This job will run a maximum of 24 simulated hours.
+         After that, if it hasn't finished all 120 hours, it intentionally exits with a non-zero status so Rocoto will submit the job.
+         As with the "mpas" job, it has a hang dependency which will resubmit the job when it hangs. -->
+    <account>rtgsd-fv3-dev</account>
+    <nodes>64:ppn=150</nodes>
+    <partition>u1-compute</partition>
+    <walltime>01:09:00</walltime>
+    <command>
+      source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; source "&MPAS_APP;/scripts/mpas_restart.sh" &amp;&amp; mpas_restart "$FORECAST_DIR" "$MPAS_APP" "$START_TIME" "$FORECAST_LENGTH" "$MPICMD" "$FORECAST_MODULE" "$MAX_RUN_DURATION"
+    </command>
+    <jobname>mpas_restart</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/mpas_restart_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>MPAS_APP</name>
+      <value>&MPAS_APP;</value>
+    </envar>
+    <envar>
+      <name>MPICMD</name>
+      <value>srun -l</value>
+    </envar>
+    <envar>
+      <name>FORECAST_DIR</name>
+      <value><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast</cyclestr></value>
+    </envar>
+    <envar>
+      <name>START_TIME</name>
+      <value><cyclestr>@Y-@m-@d_@H:@M:00</cyclestr></value>
+    </envar>
+    <envar>
+      <name>FORECAST_LENGTH</name>
+      <value>120</value>
+    </envar>
+    <envar>
+      <name>MAX_RUN_DURATION</name>
+      <value>24</value>
+    </envar>
+    <envar>
+      <name>FORECAST_MODULE</name>
+      <value>build_ursa_intel_ifort</value>
+    </envar>
+    <rewind>
+      <sh><cyclestr>rm -f &EXPERIMENT_DIR;/@Y@m@d@H/forecast/completion_timestamp</cyclestr></sh>
+    </rewind>
+    <dependency>
+      <and>
+        <taskdep task="mpas" state="DEAD"/>
+        <not>
+          <datadep><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/completion_timestamp</cyclestr></datadep>
+        </not>
+      </and>
+    </dependency>
+    <hangdependency>
+      <!-- This dependency kills the job if the log.atmosphere file for rank 0 is unmodified for 480 seconds.
+           It is identical to the hang dependency of the "mpas" job. The restart will be resubmitted. -->
+      <or>
+        <datadep age="480"><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/log.atmosphere.00000.out</cyclestr></datadep>
+        <datadep age="480"><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/log.atmosphere.0000.out</cyclestr></datadep>
+        <datadep age="480"><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/log.atmosphere.000.out</cyclestr></datadep>
+        <datadep age="480"><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/log.atmosphere.00.out</cyclestr></datadep>
+      </or>
+    </hangdependency>
+  </task>
+  <metatask name="post">
+    <var name="fhr"> 000 006 012 018 024 030 036 042 048 054 060 066 072 078 084 090 096 102 108 114 120</var>
+    <task name="change_start_time_#fhr#" maxtries="3">
+      <!-- When the mpas_restart job generates output, the simulation start time is wrong in its output files.
+           In the output files, the start time is the time at which mpas was restarted.
+           This change_start_time job changes it to the expected time. -->
+      <account>gsd-fv3-dev</account>
+      <cores>1</cores>
+      <walltime>00:15:00</walltime>
+      <command>
+        source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; source "&MPAS_APP;/scripts/change_start_time.sh" &amp;&amp; change_start_time "$FORECAST_DIR" "$MPAS_APP" "$FORECAST_MODULE" "$START_TIME" "$FHR"
+      </command>
+      <jobname>change_start_time_#fhr#</jobname>
+      <join>
+        <cyclestr>&LOGDIR;/change_start_time_#fhr#_@Y@m@d@H.log</cyclestr>
+      </join>
+      <envar>
+        <name>FHR</name>
+        <value>#fhr#</value>
+      </envar>
+      <envar>
+        <name>MPAS_APP</name>
+        <value>&MPAS_APP;</value>
+      </envar>
+      <envar>
+        <name>FORECAST_DIR</name>
+        <value><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast</cyclestr></value>
+      </envar>
+      <envar>
+        <name>START_TIME</name>
+        <value><cyclestr>@Y-@m-@d_@H:@M:00</cyclestr></value>
+      </envar>
+      <envar>
+        <name>FORECAST_LENGTH</name>
+        <value>120</value>
+      </envar>
+      <envar>
+        <name>FORECAST_MODULE</name>
+        <value>build_ursa_intel_ifort</value>
+      </envar>
+      <dependency>
+        <or>
+          <taskdep task="mpas"/>
+          <taskdep task="mpas_restart"/>
+          <datadep><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/completion_timestamp</cyclestr></datadep>
+          <sh shell="/bin/bash" name="check_for_output">
+            <cyclestr>&MPAS_APP;/scripts/output_is_available_for.sh &EXPERIMENT_DIR;/@Y@m@d@H/forecast @Y-@m-@d_@H:00:00 #fhr# 6</cyclestr>
+          </sh>
+        </or>
+      </dependency>
+    </task>
+    <task name="delete_old_restarts_#fhr#" maxtries="3">
+      <!-- Restart files are HUGE and numerous. They had to be scrubbed in real-time, as soon as they're no longer needed. -->
+      <account>gsd-fv3-dev</account>
+      <cores>1</cores>
+      <walltime>00:15:00</walltime>
+      <command>
+        source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; source "&MPAS_APP;/scripts/delete_old_restarts.sh" &amp;&amp; delete_old_restarts "$FORECAST_DIR" "$RESTARTS_TO_KEEP"
+      </command>
+      <jobname>delete_old_restarts_#fhr#</jobname>
+      <join>
+        <cyclestr>&LOGDIR;/delete_old_restarts_#fhr#_@Y@m@d@H.log</cyclestr>
+      </join>
+      <envar>
+        <name>MPAS_APP</name>
+        <value>&MPAS_APP;</value>
+      </envar>
+      <envar>
+        <name>FORECAST_DIR</name>
+        <value><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast</cyclestr></value>
+      </envar>
+      <envar>
+        <name>RESTARTS_TO_KEEP</name>
+        <value>2</value>
+      </envar>
+      <dependency>
+        <taskdep task="change_start_time_#fhr#"/>
+      </dependency>
+    </task>
+    <task name="mpassit_#fhr#" maxtries="9">
+      <account>gsd-fv3-dev</account>
+      <nodes>8:ppn=150</nodes>
+      <partition>u1-compute</partition>
+      <walltime>00:15:00</walltime>
+      <command>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; &MPAS_APP;/scripts/mpassit.sh -m &MPAS_APP;/src/MPASSIT/modulefiles/build.ursa.intel-llvm -w &EXPERIMENT_DIR;/${CYCLE}/mpassit -f #fhr# -i ${CYCLE} -x /path/to/fix/files -n &MPAS_APP;/parm/mpassit/hfip_2025 -p &MPAS_APP;/parm/mpassit/hfip_2025 -e &MPAS_APP;/exec</command>
+      <jobname>mpassit_#fhr#</jobname>
+      <exclusive/>
+      <memory>0</memory>
+      <join>
+        <cyclestr>&LOGDIR;/mpassit_#fhr#_@Y@m@d@H.log</cyclestr>
+      </join>
+      <envar>
+        <name>CYCLE</name>
+        <value>
+          <cyclestr>@Y@m@d@H</cyclestr>
+        </value>
+      </envar>
+      <envar>
+        <name>INIT_DIR</name>
+        <value>
+          <cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/mpas_ics</cyclestr>
+        </value>
+      </envar>
+      <envar>
+        <name>FCST_DIR</name>
+        <value>
+          <cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast</cyclestr>
+        </value>
+      </envar>
+      <envar>
+        <name>MESH_LABEL</name>
+        <value>x5.8060930</value>
+      </envar>
+      <dependency>
+        <!-- <or> -->
+        <!--   <taskdep task="mpas"/> -->
+        <!--   <datadep><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/completion_timestamp</cyclestr></datadep> -->
+        <!--   <sh shell="/bin/bash" name="check_for_output"> -->
+        <!--     <cyclestr>&MPAS_APP;/scripts/output_is_available_for.sh &EXPERIMENT_DIR;/@Y@m@d@H/forecast @Y-@m-@d_@H:00:00 #fhr# 6</cyclestr> -->
+        <!--   </sh> -->
+        <!-- </or> -->
+        <taskdep task="change_start_time_#fhr#"/>
+      </dependency>
+    </task>
+    <task name="upp_#fhr#" maxtries="3">
+      <account>gsd-fv3-dev</account>
+      <exclusive>True</exclusive>
+      <nodes>4:ppn=48</nodes>
+      <partition>u1-compute</partition>
+      <walltime>00:12:00</walltime>
+      <command>
+        <cyclestr>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; &MPAS_APP;/scripts/upp.py -c &EXPERIMENT_CONFIG; --cycle @Y-@m-@dT@H:@M:@S --leadtime #fhr# --key-path post</cyclestr>
+      </command>
+      <jobname>upp_#fhr#</jobname>
+      <join>
+        <cyclestr>&LOGDIR;/upp_#fhr#_@Y@m@d@H.log</cyclestr>
+      </join>
+      <dependency>
+        <taskdep task="mpassit_#fhr#"/>
+      </dependency>
+    </task>
+    <task name="combine_grib_#fhr#" maxtries="3">
+      <account>gsd-fv3-dev</account>
+      <cores>1</cores>
+      <walltime>00:02:00</walltime>
+      <command>
+        <cyclestr>set -xue -o pipefail ; cd &EXPERIMENT_DIR;/@Y@m@d@H/upp/#fhr# &amp;&amp; FHR=$( printf "%02d" "$((10##fhr#))") &amp;&amp; cat PRSLEV.GrbF$FHR NATLEV.GrbF$FHR 2DFLD.GrbF$FHR &gt;&gt; ../COMBINED.GrbF$FHR</cyclestr>
+      </command>
+      <jobname>combine_grib_#fhr#</jobname>
+      <join>
+        <cyclestr>&LOGDIR;/combine_grib_#fhr#_@Y@m@d@H.log</cyclestr>
+      </join>
+      <envar>
+        <name>FHR</name>
+        <value>#fhr#</value>
+      </envar>
+      <dependency>
+        <taskdep task="upp_#fhr#"/>
+      </dependency>
+    </task>
+    <task name="delete_model_and_mpassit_output_#fhr#" maxtries="3">
+      <!-- This job doesn't exactly do what it says; it only deletes the model output, not mpassit output.
+           As with restart files, the history files are huge, and must be scrubbed as soon as they're not needed.
+           The mpassit files can't be scrubbed until later since they're archived. -->
+      <account>gsd-fv3-dev</account>
+      <cores>1</cores>
+      <walltime>00:15:00</walltime>
+      <command>
+        source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; source "&MPAS_APP;/scripts/delete_model_and_mpassit_output.sh" &amp;&amp; delete_model_and_mpassit_output "$FORECAST_DIR" "$MPASSIT_PARENT_DIR" "$START_TIME" "$LEAD_TIME"
+      </command>
+      <jobname>delete_model_and_mpassit_output_#fhr#</jobname>
+      <join>
+        <cyclestr>&LOGDIR;/delete_model_and_mpassit_output_#fhr#_@Y@m@d@H.log</cyclestr>
+      </join>
+      <envar>
+        <name>MPAS_APP</name>
+        <value>&MPAS_APP;</value>
+      </envar>
+      <envar>
+        <name>FORECAST_DIR</name>
+        <value><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast</cyclestr></value>
+      </envar>
+      <envar>
+        <name>MPASSIT_PARENT_DIR</name>
+        <value><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/mpassit</cyclestr></value>
+      </envar>
+      <envar>
+        <name>START_TIME</name>
+        <value><cyclestr>@Y-@m-@d_@H:@M:00</cyclestr></value>
+      </envar>
+      <envar>
+        <name>LEAD_TIME</name>
+        <value>#fhr#</value>
+      </envar>
+      <dependency>
+        <taskdep task="upp_#fhr#"/>
+      </dependency>
+    </task>
+  </metatask>
+  <task name="tracker" maxtries="3">
+    <account>gsd-fv3-dev</account>
+    <exclusive>True</exclusive>
+    <nodes>1:ppn=32</nodes>
+    <partition>u1-compute</partition>
+    <walltime>00:12:00</walltime>
+    <command>
+      <cyclestr>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; cd &EXPERIMENT_DIR;/@Y@m@d@H &amp;&amp; &MPAS_APP;/scripts/run_tracker.sh @Y@m@d@H</cyclestr>
+    </command>
+    <jobname>tracker</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/tracker_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>TRACKER_DIR</name>
+      <value>
+        <cyclestr>/scratch3/BMC/wrfruc/Samuel.Trahan/mpashfip/tracker-hafs-211</cyclestr>
+      </value>
+    </envar>
+    <envar>
+      <name>MPISERIAL</name>
+      <value>
+        <cyclestr>/scratch3/BMC/gsd-fv3-dev/role.rtgsd-fv3-dev/merge-hafs-and-gfs/mpiserial/mpiserial</cyclestr>
+      </value>
+    </envar>
+    <envar>
+      <name>SYNDAT_PREFIX</name>
+      <value>
+        <cyclestr>/scratch3/HFIP/hwrfv3/noscrub/input/SYNDAT-PLUS/syndat_tcvitals</cyclestr>
+      </value>
+    </envar>
+    <envar>
+      <name>FHOUR_STEP</name>
+      <value>
+        <cyclestr>6</cyclestr>
+      </value>
+    </envar>
+    <envar>
+      <name>FORECAST_LENGTH</name>
+      <value>
+        <cyclestr>120</cyclestr>
+      </value>
+    </envar>
+    <envar>
+      <name>MPICMD</name>
+      <value>
+        <cyclestr>srun -l</cyclestr>
+      </value>
+    </envar>
+    <dependency>
+      <metataskdep metatask="post"/>
+    </dependency>
+  </task>
+  <task name="graphics" maxtries="3">
+    <account>gsd-fv3-dev</account>
+    <nodes>1:ppn=192</nodes>
+    <partition>u1-compute</partition>
+    <walltime>5:10:00</walltime>
+    <command>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; &MPAS_APP;/scripts/run_graphics.sh</command>
+    <jobname>graphics</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/graphics_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>CONFIG_PATH</name>
+      <value>&EXPERIMENT_CONFIG;</value>
+    </envar>
+    <envar>
+      <name>CYCLE</name>
+      <value>
+        <cyclestr>@Y@m@d@H</cyclestr>
+      </value>
+    </envar>
+    <envar>
+      <name>IDENTIFIER</name>
+      <value>HFIP Experimental</value>
+    </envar>
+    <dependency>
+      <metataskdep metatask="post"/>
+      <!-- <taskdep task="combine_grib_006"/> -->
+    </dependency>
+  </task>
+  <task name="scrub_forecast">
+    <account>rtgsd-fv3-dev</account>
+    <cores>1</cores>
+    <partition>u1-service</partition>
+    <walltime>00:10:00</walltime>
+    <command>set -xue ; cd "$SCRUB_PARENT" ; rm -f forecast/diag*nc forecast/history*nc forecast/restart*nc</command>
+    <jobname>scrub_forecast</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/scrub_forecast_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>SCRUB_PARENT</name>
+      <value>
+        <cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/</cyclestr>
+      </value>
+    </envar>
+    <dependency>
+      <and>
+        <taskdep task="tracker"/>
+        <metataskdep metatask="post"/>
+      </and>
+    </dependency>
+  </task>
+  <task name="scrub_mpas_ics">
+    <account>rtgsd-fv3-dev</account>
+    <cores>1</cores>
+    <partition>u1-service</partition>
+    <walltime>00:10:00</walltime>
+    <command>set -xue ; cd "$SCRUB_PARENT" ; rm -rf mpas_ics</command>
+    <jobname>scrub_mpas_ics</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/scrub_mpas_ics_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>SCRUB_PARENT</name>
+      <value>
+        <cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/</cyclestr>
+      </value>
+    </envar>
+    <dependency>
+      <and>
+        <taskdep task="tracker"/>
+        <metataskdep metatask="post"/>
+      </and>
+    </dependency>
+  </task>
+  <task name="scrub_mpassit">
+    <account>rtgsd-fv3-dev</account>
+    <cores>1</cores>
+    <partition>u1-service</partition>
+    <walltime>00:10:00</walltime>
+    <command>set -xue ; cd "$SCRUB_PARENT" ; rm -rf mpassit</command>
+    <jobname>scrub_mpassit</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/scrub_mpassit_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>SCRUB_PARENT</name>
+      <value>
+        <cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/</cyclestr>
+      </value>
+    </envar>
+    <dependency>
+      <and>
+        <metataskdep metatask="post"/>
+        <metataskdep metatask="archive_mpassit"/>
+      </and>
+    </dependency>
+  </task>
+  <task name="scrub_init">
+    <account>rtgsd-fv3-dev</account>
+    <cores>1</cores>
+    <partition>u1-service</partition>
+    <walltime>00:10:00</walltime>
+    <command>set -xue ; cd "$SCRUB_PARENT" ; rm -f forecast/*init*nc</command>
+    <jobname>scrub_init</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/scrub_init_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>SCRUB_PARENT</name>
+      <value>
+        <cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/</cyclestr>
+      </value>
+    </envar>
+    <dependency>
+      <and>
+        <metataskdep metatask="post"/>
+        <taskdep task="archive_init"/>
+      </and>
+    </dependency>
+  </task>
+  <metatask name="archive_mpassit">
+    <var name="day"> 1 2 3 4 5 6</var>
+    <task name="archive_mpassit_day#day#">
+      <account>rtgsd-fv3-dev</account>
+      <cores>1</cores>
+      <partition>u1-service</partition>
+      <walltime>02:59:00</walltime>
+      <command>
+        <cyclestr>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; cd &EXPERIMENT_DIR; &amp;&amp; &MPAS_APP;/scripts/archive_mpassit.sh #day# @Y@m@d@H "$ARCHIVE_DIR"</cyclestr>
+      </command>
+      <jobname>archive_mpassit_day#day#</jobname>
+      <join>
+        <cyclestr>&LOGDIR;/archive_mpassit_day#day#_@Y@m@d@H_day#day#.log</cyclestr>
+      </join>
+      <envar>
+        <name>ARCHIVE_DIR</name>
+        <value>
+          <cyclestr>/5year/BMC/fv3lam/role.rtgsd-fv3-dev/testdir</cyclestr>
+        </value>
+      </envar>
+      <dependency>
+        <metataskdep metatask="post"/>
+      </dependency>
+    </task>
+  </metatask>
+  <task name="archive_upp">
+    <account>rtgsd-fv3-dev</account>
+    <cores>1</cores>
+    <partition>u1-service</partition>
+    <walltime>02:59:00</walltime>
+    <command>
+      <cyclestr>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; cd &EXPERIMENT_DIR; &amp;&amp; &MPAS_APP;/scripts/archive_upp.sh @Y@m@d@H "$ARCHIVE_DIR"</cyclestr>
+    </command>
+    <jobname>archive_upp</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/archive_upp_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>ARCHIVE_DIR</name>
+      <value>
+        <cyclestr>/5year/BMC/fv3lam/role.rtgsd-fv3-dev/testdir</cyclestr>
+      </value>
+    </envar>
+    <dependency>
+      <metataskdep metatask="post"/>
+    </dependency>
+  </task>
+  <task name="archive_tracker">
+    <account>rtgsd-fv3-dev</account>
+    <cores>1</cores>
+    <partition>u1-service</partition>
+    <walltime>00:29:00</walltime>
+    <command>
+      <cyclestr>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; cd &EXPERIMENT_DIR; &amp;&amp; &MPAS_APP;/scripts/archive_tracker.sh @Y@m@d@H "$ARCHIVE_DIR"</cyclestr>
+    </command>
+    <jobname>archive_tracker</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/archive_tracker_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>ARCHIVE_DIR</name>
+      <value>
+        <cyclestr>/5year/BMC/fv3lam/role.rtgsd-fv3-dev/testdir</cyclestr>
+      </value>
+    </envar>
+    <dependency>
+      <taskdep task="tracker"/>
+    </dependency>
+  </task>
+  <task name="archive_init">
+    <account>rtgsd-fv3-dev</account>
+    <cores>1</cores>
+    <partition>u1-service</partition>
+    <walltime>02:59:00</walltime>
+    <command>
+      <cyclestr>source &MPAS_APP;/load_wflow_modules.sh &PLATFORM; &amp;&amp; cd &EXPERIMENT_DIR; &amp;&amp; &MPAS_APP;/scripts/archive_init.sh @Y@m@d@H "$ARCHIVE_DIR"</cyclestr>
+    </command>
+    <jobname>archive_init</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/archive_init_@Y@m@d@H.log</cyclestr>
+    </join>
+    <envar>
+      <name>ARCHIVE_DIR</name>
+      <value>
+        <cyclestr>/5year/BMC/fv3lam/role.rtgsd-fv3-dev/testdir</cyclestr>
+      </value>
+    </envar>
+    <dependency>
+      <or>
+        <taskdep task="mpas"/>
+        <!-- <taskdep task="mpas_restart"/> -->
+        <datadep><cyclestr>&EXPERIMENT_DIR;/@Y@m@d@H/forecast/completion_timestamp</cyclestr></datadep>
+        <metataskdep metatask="post"/>
+      </or>
+    </dependency>
+  </task>
+  <task name="final_job" final="T">
+    <!-- This job exists soley to mark the cycle as complete in the Rocoto database.
+         We need it because the cycle will never complete all jobs.
+         Either the mpas job will succeed, or the mpas_restart will succeed.
+         It is impossible for them both to succeed in the ordinary course of operations. -->
+    <account>gsd-fv3-dev</account>
+    <cores>1</cores>
+    <partition>u1-compute</partition>
+    <walltime>00:01:00</walltime>
+    <command>true</command>
+    <jobname>final_job</jobname>
+    <join>
+      <cyclestr>&LOGDIR;/final_job_@Y@m@d@H.log</cyclestr>
+    </join>
+    <dependency>
+      <and>
+        <taskdep task="archive_tracker"/>
+        <taskdep task="archive_upp"/>
+        <taskdep task="archive_init"/>
+        <metataskdep metatask="archive_mpassit"/>
+
+        <taskdep task="scrub_init"/>
+        <taskdep task="scrub_mpassit"/>
+        <taskdep task="scrub_mpas_ics"/>
+        <taskdep task="scrub_forecast"/>
+
+        <taskdep task="graphics"/>
+        <taskdep task="tracker"/>
+      </and>
+    </dependency>
+  </task>
+</workflow>
