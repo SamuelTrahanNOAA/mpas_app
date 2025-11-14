@@ -36,21 +36,21 @@ Step-by-step:
 5. *mpas* attempts to run the MPAS 120 hour forecast, and usually hangs.
 6. *mpas_restart* only runs if the *mpas* job hangs. It forecasts a maximum of 24 hours before resubmitting. This is a simpler job than *mpas*, reducing the chances of errors from, for example, conflicting library versions from conda.
 7. Each time model output files diag and history streams are both available for a forecast time, the following happens.
-   a. *change_start_time* edits the history and diag file start times to be the initial start time. This is necessary for the restart jobs whose output files' start time is set to the restart time instead.
-   b. *delete_old_restarts* deletes all but the two latest restart files. This is to save disk space.
-   c. *mpassit* runs MPASSIT to convert history and diag files to gridded data usable by UPP
-   d. *upp* runs UPP to generate GRIB files, three per output time
-   e. *combine_grib* concatinates the three output GRIB files into one, to feed the graphics
-   f. *delete_model_and_mpassit_output* doesn't do what it says. All it deletes is the history and diag files. The mpassit files aren't deleted until after archiving.
+   1. *change_start_time* edits the history and diag file start times to be the initial start time. This is necessary for the restart jobs whose output files' start time is set to the restart time instead.
+   2. *delete_old_restarts* deletes all but the two latest restart files. This is to save disk space.
+   3. *mpassit* runs MPASSIT to convert history and diag files to gridded data usable by UPP
+   3. *upp* runs UPP to generate GRIB files, three per output time
+   3. *combine_grib* concatinates the three output GRIB files into one, to feed the graphics
+   3. *delete_model_and_mpassit_output* doesn't do what it says. All it deletes is the history and diag files. The mpassit files aren't deleted until after archiving.
 8. *tracker* is run after all post-processing is complete
 9. *graphics* is run at the same time as the tracker
 10. Archiving and Scrubbing - Several of these jobs may run at once. All wait for post-processing to complete, but some may have additional dependencies.
-   a. *archive_mpassit* archives all MPASSIT output files using htar. They're split into six archives, one per day, due to htar archive size limitations.
-   b. *archive_upp* archives the three UPP output GRIB files from each output time using htar.
-   c. *archive_tracker* archives the entire tracker directory using htar, including intermediate GRIB files, configuration, and output.
-   d. *archive_init* archives the init files from the forecast directory. Unlike other jobs, this one uses "hsi put" since the init file is too large for an htar archive.
-   e. *scrub_forecast* runs after the tracker completes. It deletes all diag, history, and restart files from the forecast directory. This should only be the final two restart files.
-   f. *scrub_mpassit* runs as soon as the post-processing is complete and mpassit files are archived. It deletes all mpassit intermediate and output files.
-   h. *scrub_init* runs when the *archive_init* completes. It deletes the init file and the graph files (which were copied from elsewhere).
-   g. *scrub_mpas_ics* scrubs the directory that ran MPAS's init_atmosphere. This is a duplicate of the file in *scrub_init*.
+   1. *archive_mpassit* archives all MPASSIT output files using htar. They're split into six archives, one per day, due to htar archive size limitations.
+   1. *archive_upp* archives the three UPP output GRIB files from each output time using htar.
+   1. *archive_tracker* archives the entire tracker directory using htar, including intermediate GRIB files, configuration, and output.
+   1. *archive_init* archives the init files from the forecast directory. Unlike other jobs, this one uses "hsi put" since the init file is too large for an htar archive.
+   1. *scrub_forecast* runs after the tracker completes. It deletes all diag, history, and restart files from the forecast directory. This should only be the final two restart files.
+   1. *scrub_mpassit* runs as soon as the post-processing is complete and mpassit files are archived. It deletes all mpassit intermediate and output files.
+   2. *scrub_init* runs when the *archive_init* completes. It deletes the init file and the graph files (which were copied from elsewhere).
+   9. *scrub_mpas_ics* scrubs the directory that ran MPAS's init_atmosphere. This is a duplicate of the file in *scrub_init*.
 11. *final* marks the cycle as complete when all jobs are complete except *mpas* or *mpas_restart*. This is necessary because no cycles will complete both jobs, and hence Rocoto wouldn't ever think the cycle is complete.
